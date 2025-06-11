@@ -120,16 +120,16 @@ class CaseCreate(BaseModel):
     client_name: str
     description: str
 
-# AI Legal Assistant
+# AI Legal Assistant with OpenRouter
 async def get_ai_legal_response(query: str, context: str = "", session_id: str = None) -> str:
-    """Get AI response for legal queries using OpenAI"""
+    """Get AI response for legal queries using OpenRouter"""
     try:
         if not session_id:
             session_id = str(uuid.uuid4())
             
         # Check if API key is available
         if not OPENAI_API_KEY:
-            return "Error: OpenAI API key not configured"
+            return "Error: OpenRouter API key not configured"
             
         system_message = """You are an expert AI legal assistant specialized in Indian law. 
         You help legal associates with research, case analysis, and legal reasoning.
@@ -144,27 +144,43 @@ async def get_ai_legal_response(query: str, context: str = "", session_id: str =
         
         Remember: You assist with legal research but cannot provide specific legal advice."""
         
-        # Initialize chat with error handling
-        chat = LlmChat(
-            api_key=OPENAI_API_KEY,
-            session_id=session_id,
-            system_message=system_message
-        ).with_model("openai", "gpt-4o").with_max_tokens(2000)
-        
-        full_query = f"Legal Research Query: {query}"
-        if context:
-            full_query += f"\n\nAdditional Context: {context}"
+        # Use OpenRouter endpoint directly with aiohttp
+        async with aiohttp.ClientSession() as session:
+            headers = {
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://emergent.sh",
+                "X-Title": "Legal AI Research Platform"
+            }
             
-        user_message = UserMessage(text=full_query)
-        response = await chat.send_message(user_message)
-        
-        return response
+            payload = {
+                "model": "openai/gpt-4o",
+                "messages": [
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": f"Legal Research Query: {query}" + (f"\n\nAdditional Context: {context}" if context else "")}
+                ],
+                "max_tokens": 2000,
+                "temperature": 0.7
+            }
+            
+            async with session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data["choices"][0]["message"]["content"]
+                else:
+                    error_text = await response.text()
+                    logger.error(f"OpenRouter API error: {response.status} - {error_text}")
+                    return f"AI Service Error: OpenRouter API returned status {response.status}. Please check your API key and credits."
         
     except Exception as e:
-        logger.error(f"Error getting AI response: {str(e)}")
+        logger.error(f"Error getting AI response from OpenRouter: {str(e)}")
         error_msg = str(e)
         if "authentication" in error_msg.lower() or "api_key" in error_msg.lower():
-            return f"AI Service Authentication Error: Please verify the OpenAI API key is valid and has sufficient credits. Error: {error_msg}"
+            return f"AI Service Authentication Error: Please verify the OpenRouter API key is valid and has sufficient credits. Error: {error_msg}"
         return f"AI Service Error: {error_msg}"
 
 # Indian Kanoon Search Integration
