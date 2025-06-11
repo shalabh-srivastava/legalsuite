@@ -24,8 +24,11 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 # API Keys
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 INDIAN_KANOON_API_KEY = os.environ.get('INDIAN_KANOON_API_KEY')
+
+# Legacy reference for backward compatibility
+OPENAI_API_KEY = OPENROUTER_API_KEY
 
 # Create the main app without a prefix
 app = FastAPI(title="AI Legal Research Platform", version="1.0.0")
