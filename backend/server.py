@@ -449,7 +449,7 @@ async def health_check():
         "timestamp": datetime.utcnow(),
         "services": {
             "database": "connected",
-            "ai": "ready (OpenRouter)" if OPENAI_API_KEY else "not configured",
+            "ai": "ready (OpenRouter)" if OPENROUTER_API_KEY else "not configured",
             "indian_kanoon": "ready" if INDIAN_KANOON_API_KEY else "not configured"
         }
     }
