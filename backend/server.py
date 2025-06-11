@@ -127,6 +127,10 @@ async def get_ai_legal_response(query: str, context: str = "", session_id: str =
         if not session_id:
             session_id = str(uuid.uuid4())
             
+        # Check if API key is available
+        if not OPENAI_API_KEY:
+            return "Error: OpenAI API key not configured"
+            
         system_message = """You are an expert AI legal assistant specialized in Indian law. 
         You help legal associates with research, case analysis, and legal reasoning.
         
@@ -140,11 +144,12 @@ async def get_ai_legal_response(query: str, context: str = "", session_id: str =
         
         Remember: You assist with legal research but cannot provide specific legal advice."""
         
+        # Initialize chat with error handling
         chat = LlmChat(
             api_key=OPENAI_API_KEY,
             session_id=session_id,
             system_message=system_message
-        ).with_model("openai", "gpt-4o")
+        ).with_model("openai", "gpt-4o").with_max_tokens(2000)
         
         full_query = f"Legal Research Query: {query}"
         if context:
@@ -157,7 +162,10 @@ async def get_ai_legal_response(query: str, context: str = "", session_id: str =
         
     except Exception as e:
         logger.error(f"Error getting AI response: {str(e)}")
-        return f"Error processing legal query: {str(e)}"
+        error_msg = str(e)
+        if "authentication" in error_msg.lower() or "api_key" in error_msg.lower():
+            return f"AI Service Authentication Error: Please verify the OpenAI API key is valid and has sufficient credits. Error: {error_msg}"
+        return f"AI Service Error: {error_msg}"
 
 # Indian Kanoon Search Integration
 async def search_indian_kanoon(query: str, max_results: int = 10) -> List[dict]:
