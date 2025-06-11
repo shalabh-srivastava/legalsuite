@@ -384,11 +384,21 @@ async def upload_document(
 
 @api_router.get("/documents/{law_firm_id}")
 async def get_documents_by_firm(law_firm_id: str):
-    documents = await db.legal_documents.find(
-        {"law_firm_id": law_firm_id},
-        {"content": 0}  # Exclude large content field
-    ).to_list(1000)
-    return [LegalDocument(**{**doc, "content": "excluded"}) for doc in documents]
+    try:
+        documents = await db.legal_documents.find(
+            {"law_firm_id": law_firm_id},
+            {"content": 0}  # Exclude large content field
+        ).sort("created_at", -1).to_list(1000)
+        
+        # Convert MongoDB ObjectId to string for JSON serialization
+        for doc in documents:
+            if "_id" in doc:
+                doc["_id"] = str(doc["_id"])
+                
+        return documents
+    except Exception as e:
+        logger.error(f"Error fetching documents: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch documents: {str(e)}")
 
 # Research History
 @api_router.get("/research-history/{law_firm_id}")
