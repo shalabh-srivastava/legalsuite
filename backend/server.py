@@ -150,7 +150,7 @@ async def get_ai_legal_response(query: str, context: str = "", session_id: str =
         # Use OpenRouter endpoint directly with aiohttp
         async with aiohttp.ClientSession() as session:
             headers = {
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json",
                 "HTTP-Referer": "https://emergent.sh",
                 "X-Title": "Legal AI Research Platform"
