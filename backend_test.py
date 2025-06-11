@@ -305,18 +305,24 @@ class LegalPlatformAPITest(unittest.TestCase):
             
             # Upload the document with form data
             with open(test_file_path, "rb") as f:
-                files = {"file": ("legal_memo_crypto.txt", f, "text/plain")}
+                # Using multipart/form-data with explicit content-type
+                files = {
+                    "file": ("legal_memo_crypto.txt", f, "text/plain")
+                }
                 
-                # Using form-data for all fields
+                data = {
+                    "law_firm_id": TEST_LAW_FIRM_ID,
+                    "case_id": self.case_id if hasattr(self, 'case_id') and self.case_id else "",
+                    "document_type": "legal_memorandum",
+                    "uploaded_by": TEST_USER_ID
+                }
+                
+                print(f"Sending form data: {data}")
+                
                 response = self.session.post(
                     f"{API_BASE_URL}/documents/upload",
                     files=files,
-                    data={
-                        "law_firm_id": TEST_LAW_FIRM_ID,
-                        "case_id": self.case_id,
-                        "document_type": "legal_memorandum",
-                        "uploaded_by": TEST_USER_ID
-                    }
+                    data=data
                 )
             
             # Clean up the test file
