@@ -131,7 +131,7 @@ async def get_ai_legal_response(query: str, context: str = "", session_id: str =
             session_id = str(uuid.uuid4())
             
         # Check if API key is available
-        if not OPENAI_API_KEY:
+        if not OPENROUTER_API_KEY:
             return "Error: OpenRouter API key not configured"
             
         system_message = """You are an expert AI legal assistant specialized in Indian law. 
