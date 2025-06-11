@@ -393,8 +393,20 @@ async def get_documents_by_firm(law_firm_id: str):
 # Research History
 @api_router.get("/research-history/{law_firm_id}")
 async def get_research_history(law_firm_id: str):
-    results = await db.research_results.find({"law_firm_id": law_firm_id}).to_list(100)
-    return results
+    try:
+        results = await db.research_results.find(
+            {"law_firm_id": law_firm_id}
+        ).sort("created_at", -1).limit(100).to_list(100)
+        
+        # Convert MongoDB ObjectId to string for JSON serialization
+        for result in results:
+            if "_id" in result:
+                result["_id"] = str(result["_id"])
+        
+        return results
+    except Exception as e:
+        logger.error(f"Error fetching research history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch research history: {str(e)}")
 
 # Health check
 @api_router.get("/")
