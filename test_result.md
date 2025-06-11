@@ -140,9 +140,9 @@ backend:
 
   - task: "Document Upload and AI Analysis"
     implemented: true
-    working: false
+    working: true
     file: "/app/backend/server.py"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
@@ -152,6 +152,9 @@ backend:
         - working: false
         - agent: "testing"
         - comment: "Document upload API returns a 500 error with validation issues. The form data parameters (law_firm_id and uploaded_by) are not being properly received by the server. Additionally, the OpenAI authentication error would prevent AI analysis even if the upload worked."
+        - working: true
+        - agent: "testing"
+        - comment: "Fixed document upload API by updating the endpoint to use Form() parameters instead of regular parameters. The API now correctly receives form data and processes file uploads. AI analysis is working properly with OpenRouter integration."
 
   - task: "Multi-tenant Database Design"
     implemented: true
