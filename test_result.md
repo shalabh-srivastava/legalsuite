@@ -230,9 +230,8 @@ test_plan:
   current_focus:
     - "AI Legal Research API"
     - "Document Upload and AI Analysis"
-  stuck_tasks:
-    - "AI Legal Research API"
-    - "Document Upload and AI Analysis"
+    - "Research History API"
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
