@@ -329,6 +329,7 @@ class LegalPlatformAPITest(unittest.TestCase):
             os.remove(test_file_path)
             
             print(f"Status Code: {response.status_code}")
+            print(f"Response: {response.text}")
             
             if response.status_code == 200:
                 result = response.json()
