@@ -54,18 +54,20 @@ class LegalPlatformAPITest(unittest.TestCase):
             "description": "Breach of contract dispute regarding software development agreement"
         }
         
-        # Test legal research query
+        # Test legal research query - Using a more complex Indian law query
         self.research_query = {
-            "query": "What are the key elements required to prove breach of contract under Indian Contract Act 1872?",
+            "query": "Analyze the legal framework for cryptocurrency regulation in India, including RBI circulars, Supreme Court decisions, and recent legislative developments. What are the compliance requirements for crypto exchanges operating in India?",
             "law_firm_id": TEST_LAW_FIRM_ID,
-            "user_id": TEST_USER_ID
+            "user_id": TEST_USER_ID,
+            "case_id": None  # Optional case ID
         }
         
-        print(f"\n{'='*80}\nTesting Legal Platform API at {API_BASE_URL}\n{'='*80}")
+        print(f"\n{'='*80}\nComprehensive Testing of Legal Platform API at {API_BASE_URL}\n{'='*80}")
+        print(f"Testing after critical fixes: OpenRouter integration, form data validation, and MongoDB serialization")
     
     def test_01_health_check(self):
-        """Test the health check endpoint"""
-        print("\n1. Testing Health Check API...")
+        """Test the health check endpoint to confirm OpenRouter is ready"""
+        print("\n1. Testing Health Check API (Confirming OpenRouter Integration)...")
         
         response = self.session.get(f"{API_BASE_URL}/health")
         
@@ -75,10 +77,19 @@ class LegalPlatformAPITest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "healthy")
         self.assertTrue("database" in response.json()["services"])
-        self.assertTrue("ai" in response.json()["services"])
-        self.assertTrue("indian_kanoon" in response.json()["services"])
         
-        print("✅ Health Check API test passed")
+        # Specifically check if OpenRouter is configured
+        self.assertTrue("ai" in response.json()["services"])
+        ai_status = response.json()["services"]["ai"]
+        print(f"AI Service Status: {ai_status}")
+        self.assertTrue("ready (OpenRouter)" in ai_status, "OpenRouter not properly configured")
+        
+        # Check Indian Kanoon API
+        self.assertTrue("indian_kanoon" in response.json()["services"])
+        kanoon_status = response.json()["services"]["indian_kanoon"]
+        print(f"Indian Kanoon API Status: {kanoon_status}")
+        
+        print("✅ Health Check API test passed - OpenRouter integration confirmed")
     
     def test_02_create_law_firm(self):
         """Test creating a law firm"""
@@ -201,8 +212,9 @@ class LegalPlatformAPITest(unittest.TestCase):
         print("✅ Case Management APIs tests passed")
     
     def test_05_ai_legal_research(self):
-        """Test the AI Legal Research API"""
-        print("\n5. Testing AI Legal Research API...")
+        """Test the AI Legal Research API with OpenRouter integration"""
+        print("\n5. Testing AI Legal Research API with OpenRouter Integration...")
+        print("Using complex query about cryptocurrency regulation in India")
         
         try:
             response = self.session.post(
@@ -213,48 +225,87 @@ class LegalPlatformAPITest(unittest.TestCase):
             print(f"Status Code: {response.status_code}")
             
             if response.status_code == 200:
-                print(f"Response Preview: {json.dumps({k: v[:100] + '...' if isinstance(v, str) and len(v) > 100 else v for k, v in response.json().items()}, indent=2)}")
+                result = response.json()
                 
-                self.assertTrue("ai_response" in response.json())
-                self.assertTrue("indian_kanoon_results" in response.json())
+                # Print a preview of the response
+                print(f"AI Response Preview: {result['ai_response'][:200]}...")
+                print(f"Number of Indian Kanoon results: {len(result['indian_kanoon_results'])}")
                 
-                # Check if AI response contains content (may be error message due to API key issues)
-                ai_response = response.json()["ai_response"]
-                self.assertTrue(len(ai_response) > 0)
+                # Verify response structure
+                self.assertTrue("ai_response" in result)
+                self.assertTrue("indian_kanoon_results" in result)
+                self.assertTrue("query" in result)
                 
-                # Check if we got Indian Kanoon results (may be empty if API key issues)
-                kanoon_results = response.json()["indian_kanoon_results"]
-                print(f"Number of Indian Kanoon results: {len(kanoon_results)}")
+                # Verify AI response quality
+                ai_response = result["ai_response"]
+                self.assertTrue(len(ai_response) > 200, "AI response too short")
                 
-                # Check if there's an authentication error in the response
-                if "authentication error" in ai_response.lower() or "auth" in ai_response.lower():
-                    print("⚠️ AI Legal Research API returned authentication error - likely an API key issue")
-                    print("API is functioning but OpenAI authentication failed")
-                else:
-                    print("✅ AI Legal Research API test passed with valid response")
+                # Check for authentication errors
+                self.assertFalse("authentication error" in ai_response.lower(), 
+                                "Authentication error in AI response")
+                self.assertFalse("api key" in ai_response.lower() and "error" in ai_response.lower(), 
+                                "API key error in response")
+                
+                # Check for content quality indicators
+                quality_indicators = [
+                    "Supreme Court", "RBI", "cryptocurrency", "regulation", 
+                    "circular", "exchange", "compliance"
+                ]
+                
+                found_indicators = [indicator for indicator in quality_indicators 
+                                   if indicator.lower() in ai_response.lower()]
+                
+                print(f"Content quality indicators found: {found_indicators}")
+                self.assertTrue(len(found_indicators) >= 3, 
+                               "AI response lacks sufficient domain-specific content")
+                
+                # Check if research was saved to database by getting history
+                time.sleep(1)  # Brief pause to ensure database write completes
+                history_response = self.session.get(
+                    f"{API_BASE_URL}/research-history/{TEST_LAW_FIRM_ID}"
+                )
+                
+                self.assertEqual(history_response.status_code, 200)
+                history = history_response.json()
+                self.assertTrue(isinstance(history, list))
+                
+                # Look for our query in the history
+                found_query = False
+                for item in history:
+                    if "query" in item and self.research_query["query"][:50] in item["query"]:
+                        found_query = True
+                        break
+                
+                self.assertTrue(found_query, "Research query not found in history")
+                
+                print("✅ AI Legal Research API test passed with OpenRouter integration")
             else:
                 print(f"Response: {response.text}")
-                print("❌ AI Legal Research API test failed - API returned error")
+                self.fail(f"AI Legal Research API failed with status {response.status_code}")
         except Exception as e:
             print(f"Error during AI legal research test: {str(e)}")
-            print("❌ AI Legal Research API test failed with exception")
+            self.fail(f"AI Legal Research API test failed with exception: {str(e)}")
     
     def test_06_document_upload(self):
-        """Test document upload and AI analysis"""
-        print("\n6. Testing Document Upload and AI Analysis API...")
+        """Test document upload with form data validation fix"""
+        print("\n6. Testing Document Upload API with Form Data Validation Fix...")
         
         try:
-            # Create a simple text file for testing
+            # Create a more complex legal document for testing
             test_file_path = "test_legal_document.txt"
             with open(test_file_path, "w") as f:
-                f.write("This is a test legal document for a breach of contract case.\n")
-                f.write("The parties entered into an agreement on January 1, 2023.\n")
-                f.write("Party A failed to deliver the goods as specified in Section 3.2 of the agreement.\n")
-                f.write("Party B is seeking damages under Section 73 of the Indian Contract Act, 1872.\n")
+                f.write("LEGAL MEMORANDUM\n\n")
+                f.write("TO: Senior Partner\n")
+                f.write("FROM: Junior Associate\n")
+                f.write("DATE: June 15, 2023\n")
+                f.write("RE: Cryptocurrency Regulation in India\n\n")
+                f.write("ISSUE: What are the current legal requirements for operating a cryptocurrency exchange in India?\n\n")
+                f.write("BRIEF ANSWER: Following the Supreme Court's decision in Internet and Mobile Association of India v. Reserve Bank of India (2020), cryptocurrency trading is legal, but exchanges must comply with FEMA regulations, anti-money laundering laws, and potential forthcoming legislation.\n\n")
+                f.write("ANALYSIS: The legal landscape for cryptocurrency in India has evolved significantly...\n")
             
-            # Upload the document
+            # Upload the document with form data
             with open(test_file_path, "rb") as f:
-                files = {"file": ("test_legal_document.txt", f, "text/plain")}
+                files = {"file": ("legal_memo_crypto.txt", f, "text/plain")}
                 
                 # Using form-data for all fields
                 response = self.session.post(
@@ -263,7 +314,7 @@ class LegalPlatformAPITest(unittest.TestCase):
                     data={
                         "law_firm_id": TEST_LAW_FIRM_ID,
                         "case_id": self.case_id,
-                        "document_type": "contract",
+                        "document_type": "legal_memorandum",
                         "uploaded_by": TEST_USER_ID
                     }
                 )
@@ -274,41 +325,74 @@ class LegalPlatformAPITest(unittest.TestCase):
             print(f"Status Code: {response.status_code}")
             
             if response.status_code == 200:
-                print(f"Response Preview: {json.dumps({k: v[:100] + '...' if isinstance(v, str) and len(v) > 100 else v for k, v in response.json().items()}, indent=2)}")
+                result = response.json()
+                print(f"Document ID: {result['document_id']}")
+                print(f"AI Summary Preview: {result['ai_summary'][:200]}...")
                 
-                self.assertTrue("document_id" in response.json())
-                self.assertTrue("ai_summary" in response.json())
+                # Verify response structure
+                self.assertTrue("document_id" in result)
+                self.assertTrue("ai_summary" in result)
+                self.assertTrue("key_points" in result)
                 
-                # Check if AI summary contains relevant content
-                ai_summary = response.json()["ai_summary"]
-                self.assertTrue(len(ai_summary) > 0)  # Ensure we got a summary
+                # Verify AI summary
+                ai_summary = result["ai_summary"]
+                self.assertTrue(len(ai_summary) > 100, "AI summary too short")
                 
-                # Get documents for the law firm
-                print("\nGetting documents for law firm...")
-                response = self.session.get(
+                # Get documents for the law firm to verify storage and serialization
+                print("\nVerifying document was stored correctly...")
+                docs_response = self.session.get(
                     f"{API_BASE_URL}/documents/{TEST_LAW_FIRM_ID}"
                 )
                 
-                print(f"Status Code: {response.status_code}")
-                print(f"Response: {json.dumps(response.json(), indent=2)}")
+                print(f"Documents API Status Code: {docs_response.status_code}")
                 
-                self.assertEqual(response.status_code, 200)
-                self.assertTrue(isinstance(response.json(), list))
+                self.assertEqual(docs_response.status_code, 200)
+                documents = docs_response.json()
+                self.assertTrue(isinstance(documents, list))
                 
-                print("✅ Document Upload and AI Analysis API test passed")
+                # Check if our document is in the list
+                found_doc = False
+                for doc in documents:
+                    if doc.get("document_name") == "legal_memo_crypto.txt":
+                        found_doc = True
+                        # Verify MongoDB ObjectId serialization is working
+                        self.assertTrue("_id" in doc)
+                        self.assertTrue(isinstance(doc["_id"], str))
+                        break
+                
+                self.assertTrue(found_doc, "Uploaded document not found in documents list")
+                
+                print("✅ Document Upload API test passed with form data validation fix")
             else:
                 print(f"Response: {response.text}")
-                print("⚠️ Document Upload API test failed - API returned error")
-                print("This may be due to validation issues or OpenAI API limitations")
+                self.fail(f"Document Upload API failed with status {response.status_code}")
         except Exception as e:
             print(f"Error during document upload test: {str(e)}")
-            print("⚠️ Document Upload API test failed with exception")
+            self.fail(f"Document Upload API test failed with exception: {str(e)}")
     
     def test_07_research_history(self):
-        """Test research history API"""
-        print("\n7. Testing Research History API...")
+        """Test research history API with ObjectId serialization fix"""
+        print("\n7. Testing Research History API with ObjectId Serialization Fix...")
         
         try:
+            # First, ensure we have some research history by making a research query
+            research_query = {
+                "query": "What are the legal implications of the Personal Data Protection Bill for law firms in India?",
+                "law_firm_id": TEST_LAW_FIRM_ID,
+                "user_id": TEST_USER_ID
+            }
+            
+            # Make a research query to ensure we have history
+            print("Creating a new research query to test history...")
+            research_response = self.session.post(
+                f"{API_BASE_URL}/legal-research",
+                json=research_query
+            )
+            
+            self.assertEqual(research_response.status_code, 200)
+            
+            # Now get the research history
+            print("Getting research history...")
             response = self.session.get(
                 f"{API_BASE_URL}/research-history/{TEST_LAW_FIRM_ID}"
             )
@@ -316,15 +400,33 @@ class LegalPlatformAPITest(unittest.TestCase):
             print(f"Status Code: {response.status_code}")
             
             if response.status_code == 200:
-                print(f"Response: {json.dumps(response.json(), indent=2)}")
-                self.assertTrue(isinstance(response.json(), list))
-                print("✅ Research History API test passed")
+                history = response.json()
+                print(f"Number of research history items: {len(history)}")
+                
+                if len(history) > 0:
+                    # Print a sample history item
+                    print(f"Sample history item: {json.dumps({k: v[:100] + '...' if isinstance(v, str) and len(v) > 100 else v for k, v in history[0].items() if k != 'ai_response'}, indent=2)}")
+                
+                # Verify response structure
+                self.assertTrue(isinstance(history, list))
+                
+                # Check for MongoDB ObjectId serialization
+                for item in history:
+                    self.assertTrue("_id" in item)
+                    self.assertTrue(isinstance(item["_id"], str))
+                    
+                    # Check other required fields
+                    self.assertTrue("query" in item)
+                    self.assertTrue("ai_response" in item)
+                    self.assertTrue("law_firm_id" in item)
+                
+                print("✅ Research History API test passed with ObjectId serialization fix")
             else:
                 print(f"Response: {response.text}")
-                print("⚠️ Research History API test failed - API returned error")
+                self.fail(f"Research History API failed with status {response.status_code}")
         except Exception as e:
             print(f"Error during research history test: {str(e)}")
-            print("⚠️ Research History API test failed with exception")
+            self.fail(f"Research History API test failed with exception: {str(e)}")
 
 if __name__ == "__main__":
     # Run the tests in order
