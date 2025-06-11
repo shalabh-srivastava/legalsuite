@@ -107,51 +107,75 @@ user_problem_statement: "Build AI-powered legal platform for Indian law firms wi
 backend:
   - task: "AI Legal Research API"
     implemented: true
-    working: "pending_test"
+    working: false
     file: "/app/backend/server.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         - working: "pending_test"
         - agent: "main"
         - comment: "Implemented OpenAI GPT-4 integration with emergentintegrations library and Indian Kanoon API search functionality"
+        - working: false
+        - agent: "testing"
+        - comment: "API endpoint is implemented and returns 200 status code, but there's an authentication error with the OpenAI API. The error is: 'AuthenticationError: OpenAIException - Incorrect API key provided'. The API key format appears correct but may be invalid or expired. The Indian Kanoon API also returns a 401 error."
 
   - task: "Case Management API"
     implemented: true
-    working: "pending_test"
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         - working: "pending_test"
         - agent: "main"
         - comment: "Created CRUD endpoints for cases, law firms, and users with multi-tenant architecture"
+        - working: true
+        - agent: "testing"
+        - comment: "All Case Management APIs are working correctly. Successfully tested creating, retrieving, and updating cases with proper multi-tenant isolation using law_firm_id."
 
   - task: "Document Upload and AI Analysis"
     implemented: true
-    working: "pending_test"
+    working: false
     file: "/app/backend/server.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         - working: "pending_test"
         - agent: "main"
         - comment: "File upload endpoint with AI document analysis using OpenAI"
+        - working: false
+        - agent: "testing"
+        - comment: "Document upload API returns a 500 error with validation issues. The form data parameters (law_firm_id and uploaded_by) are not being properly received by the server. Additionally, the OpenAI authentication error would prevent AI analysis even if the upload worked."
 
   - task: "Multi-tenant Database Design"
     implemented: true
-    working: "pending_test"
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         - working: "pending_test"
         - agent: "main"
         - comment: "MongoDB collections with law_firm_id isolation and proper data models"
+        - working: true
+        - agent: "testing"
+        - comment: "Multi-tenant database design is working correctly. All APIs properly filter by law_firm_id, ensuring data isolation between tenants."
+
+  - task: "Health Check API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+        - agent: "testing"
+        - comment: "Health check API is working correctly, returning status information for database, AI, and Indian Kanoon services."
 
 frontend:
   - task: "AI Research Interface"
@@ -193,18 +217,21 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: false
 
 test_plan:
   current_focus:
     - "AI Legal Research API"
-    - "Case Management API"
     - "Document Upload and AI Analysis"
-  stuck_tasks: []
+  stuck_tasks:
+    - "AI Legal Research API"
+    - "Document Upload and AI Analysis"
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
     - agent: "main"
     - message: "Built complete AI-powered legal platform MVP with OpenAI GPT-4 and Indian Kanoon integration. Backend has all core APIs implemented with multi-tenant MongoDB setup. Frontend has professional React interface for legal associates. Ready for backend testing first."
+    - agent: "testing"
+    - message: "Completed backend API testing. Health Check and Case Management APIs are working correctly. However, there are issues with the AI Legal Research API and Document Upload API. The OpenAI API key appears to be invalid or expired, causing authentication errors. The Document Upload API has validation issues with form data parameters. The Research History API also has an error related to MongoDB ObjectId serialization."
