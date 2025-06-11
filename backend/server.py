@@ -322,10 +322,10 @@ async def conduct_legal_research(research: ResearchQuery):
 @api_router.post("/documents/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    law_firm_id: str = None,
-    case_id: Optional[str] = None,
-    document_type: str = "general",
-    uploaded_by: str = None
+    law_firm_id: str = Form(None),
+    case_id: Optional[str] = Form(None),
+    document_type: str = Form("general"),
+    uploaded_by: str = Form(None)
 ):
     try:
         # Validate required parameters
