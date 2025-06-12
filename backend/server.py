@@ -365,7 +365,8 @@ async def get_users_by_firm(law_firm_id: str):
     users = await db.users.find({"law_firm_id": law_firm_id}).to_list(1000)
     return [User(**user) for user in users]
 
-# Case Management
+# Enhanced Case Management APIs
+
 @api_router.post("/cases", response_model=Case)
 async def create_case(case: CaseCreate):
     case_dict = case.dict()
@@ -375,23 +376,235 @@ async def create_case(case: CaseCreate):
 
 @api_router.get("/cases/{law_firm_id}")
 async def get_cases_by_firm(law_firm_id: str):
-    cases = await db.cases.find({"law_firm_id": law_firm_id}).to_list(1000)
-    return [Case(**case) for case in cases]
+    try:
+        cases = await db.cases.find({"law_firm_id": law_firm_id}).sort("updated_at", -1).to_list(1000)
+        
+        # Update counts for each case
+        for case in cases:
+            if "_id" in case:
+                case["_id"] = str(case["_id"])
+            
+            # Count documents
+            doc_count = await db.legal_documents.count_documents({"case_id": case["id"]})
+            case["documents_count"] = doc_count
+            
+            # Count research
+            research_count = await db.research_results.count_documents({"case_id": case["id"]})
+            case["research_count"] = research_count
+            
+            # Count active alerts
+            if "alerts" in case and case["alerts"]:
+                active_alerts = len([alert for alert in case["alerts"] if not alert.get("is_read", False)])
+                case["active_alerts_count"] = active_alerts
+            else:
+                case["active_alerts_count"] = 0
+            
+            # Count pending tasks
+            if "tasks" in case and case["tasks"]:
+                pending_tasks = len([task for task in case["tasks"] if task.get("status") != "completed"])
+                case["pending_tasks_count"] = pending_tasks
+            else:
+                case["pending_tasks_count"] = 0
+        
+        return cases
+    except Exception as e:
+        logger.error(f"Error fetching cases: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch cases: {str(e)}")
 
 @api_router.get("/cases/detail/{case_id}")
 async def get_case_detail(case_id: str):
-    case = await db.cases.find_one({"id": case_id})
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-    return Case(**case)
+    try:
+        case = await db.cases.find_one({"id": case_id})
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        if "_id" in case:
+            case["_id"] = str(case["_id"])
+        
+        # Get related documents
+        documents = await db.legal_documents.find(
+            {"case_id": case_id}, 
+            {"content": 0}  # Exclude large content
+        ).to_list(100)
+        
+        # Get related research
+        research = await db.research_results.find({"case_id": case_id}).to_list(100)
+        
+        case["documents"] = documents
+        case["research_history"] = research
+        
+        return case
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching case detail: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch case detail: {str(e)}")
 
 @api_router.put("/cases/{case_id}")
-async def update_case(case_id: str, case_update: dict):
-    case_update['updated_at'] = datetime.utcnow()
-    result = await db.cases.update_one({"id": case_id}, {"$set": case_update})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Case not found")
-    return {"message": "Case updated successfully"}
+async def update_case(case_id: str, case_update: CaseUpdate):
+    try:
+        update_data = {k: v for k, v in case_update.dict().items() if v is not None}
+        update_data['updated_at'] = datetime.utcnow()
+        update_data['last_activity'] = datetime.utcnow()
+        
+        result = await db.cases.update_one({"id": case_id}, {"$set": update_data})
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Case not found")
+        return {"message": "Case updated successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating case: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update case: {str(e)}")
+
+@api_router.put("/cases/{case_id}/stage")
+async def update_case_stage(case_id: str, stage_data: dict):
+    try:
+        update_data = {
+            "stage": stage_data.get("stage"),
+            "sub_stage": stage_data.get("sub_stage"),
+            "updated_at": datetime.utcnow(),
+            "last_activity": datetime.utcnow()
+        }
+        
+        result = await db.cases.update_one({"id": case_id}, {"$set": update_data})
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Case not found")
+        return {"message": "Case stage updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating case stage: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update case stage: {str(e)}")
+
+# Task Management
+@api_router.post("/cases/{case_id}/tasks")
+async def add_case_task(case_id: str, task: TaskCreate):
+    try:
+        task_obj = CaseTask(**task.dict())
+        
+        result = await db.cases.update_one(
+            {"id": case_id},
+            {
+                "$push": {"tasks": task_obj.dict()},
+                "$set": {"updated_at": datetime.utcnow(), "last_activity": datetime.utcnow()}
+            }
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        return {"message": "Task added successfully", "task_id": task_obj.id}
+    except Exception as e:
+        logger.error(f"Error adding task: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to add task: {str(e)}")
+
+@api_router.put("/cases/{case_id}/tasks/{task_id}")
+async def update_case_task(case_id: str, task_id: str, status: str):
+    try:
+        result = await db.cases.update_one(
+            {"id": case_id, "tasks.id": task_id},
+            {
+                "$set": {
+                    "tasks.$.status": status,
+                    "updated_at": datetime.utcnow(),
+                    "last_activity": datetime.utcnow()
+                }
+            }
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Case or task not found")
+        
+        return {"message": "Task updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating task: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
+
+# Notes Management
+@api_router.post("/cases/{case_id}/notes")
+async def add_case_note(case_id: str, note: NoteCreate):
+    try:
+        note_obj = CaseNote(**note.dict())
+        
+        result = await db.cases.update_one(
+            {"id": case_id},
+            {
+                "$push": {"notes": note_obj.dict()},
+                "$set": {"updated_at": datetime.utcnow(), "last_activity": datetime.utcnow()}
+            }
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        return {"message": "Note added successfully", "note_id": note_obj.id}
+    except Exception as e:
+        logger.error(f"Error adding note: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to add note: {str(e)}")
+
+# Alerts Management
+@api_router.post("/cases/{case_id}/alerts")
+async def add_case_alert(case_id: str, alert: AlertCreate):
+    try:
+        alert_obj = CaseAlert(**alert.dict())
+        
+        result = await db.cases.update_one(
+            {"id": case_id},
+            {
+                "$push": {"alerts": alert_obj.dict()},
+                "$set": {"updated_at": datetime.utcnow(), "last_activity": datetime.utcnow()}
+            }
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        return {"message": "Alert added successfully", "alert_id": alert_obj.id}
+    except Exception as e:
+        logger.error(f"Error adding alert: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to add alert: {str(e)}")
+
+@api_router.put("/cases/{case_id}/alerts/{alert_id}/read")
+async def mark_alert_read(case_id: str, alert_id: str):
+    try:
+        result = await db.cases.update_one(
+            {"id": case_id, "alerts.id": alert_id},
+            {
+                "$set": {
+                    "alerts.$.is_read": True,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Case or alert not found")
+        
+        return {"message": "Alert marked as read"}
+    except Exception as e:
+        logger.error(f"Error marking alert as read: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to mark alert as read: {str(e)}")
+
+# Time Tracking
+@api_router.post("/cases/{case_id}/time-entries")
+async def add_time_entry(case_id: str, time_entry: TimeEntryCreate):
+    try:
+        time_obj = CaseTimeEntry(**time_entry.dict())
+        
+        result = await db.cases.update_one(
+            {"id": case_id},
+            {
+                "$push": {"time_entries": time_obj.dict()},
+                "$set": {"updated_at": datetime.utcnow(), "last_activity": datetime.utcnow()}
+            }
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        return {"message": "Time entry added successfully", "entry_id": time_obj.id}
+    except Exception as e:
+        logger.error(f"Error adding time entry: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to add time entry: {str(e)}")
 
 # Legal Research - The Core AI Feature
 @api_router.post("/legal-research")
