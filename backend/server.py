@@ -55,20 +55,86 @@ class User(BaseModel):
     specialization: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+class CaseAlert(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    type: str  # reminder, deadline, hearing, task
+    message: str
+    due_date: datetime
+    priority: str = "medium"  # low, medium, high, urgent
+    is_read: bool = False
+
+class CaseTask(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    description: str
+    assigned_to: str
+    due_date: Optional[datetime] = None
+    status: str = "pending"  # pending, in_progress, completed
+    priority: str = "medium"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class CaseNote(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    content: str
+    author: str
+    note_type: str = "general"  # general, hearing, research, communication
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class CaseTimeEntry(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    attorney: str
+    description: str
+    hours: float
+    billable: bool = True
+    date: datetime = Field(default_factory=datetime.utcnow)
+
 class Case(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     law_firm_id: str
     case_number: str
     case_title: str
-    case_type: str  # civil, criminal, corporate, etc.
+    case_type: str  # criminal, civil, family, corporate, constitutional, labor
     court_jurisdiction: str
     filing_date: Optional[datetime] = None
-    status: str = "active"  # active, closed, pending
+    
+    # Enhanced workflow fields
+    stage: str = "intake"  # intake, ongoing, hearing, judgment, closed
+    sub_stage: Optional[str] = None  # Notice Sent, Counter Filed, etc.
+    priority: str = "medium"  # low, medium, high, urgent
+    
+    # People involved
     assigned_attorney: str
     client_name: str
+    opposing_counsel: Optional[str] = None
+    judge_name: Optional[str] = None
+    
+    # Dates and deadlines
+    next_hearing_date: Optional[datetime] = None
+    filing_deadline: Optional[datetime] = None
+    statute_limitations: Optional[datetime] = None
+    
+    # Case content
     description: str
+    case_summary: Optional[str] = None
+    legal_issues: Optional[List[str]] = None
+    
+    # Workflow data
+    alerts: Optional[List[CaseAlert]] = []
+    tasks: Optional[List[CaseTask]] = []
+    notes: Optional[List[CaseNote]] = []
+    time_entries: Optional[List[CaseTimeEntry]] = []
+    
+    # Counts for UI
+    documents_count: int = 0
+    research_count: int = 0
+    active_alerts_count: int = 0
+    pending_tasks_count: int = 0
+    
+    # Status tracking
+    status: str = "active"  # active, closed, dropped, on_hold
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: Optional[datetime] = None
 
 class LegalDocument(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
