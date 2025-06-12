@@ -397,10 +397,13 @@ const AIResearch = ({ lawFirmId, userId }) => {
   );
 };
 
-// Case Management Component
+// Enhanced Case Management Component with Kanban Board
 const CaseManagement = ({ lawFirmId }) => {
   const [cases, setCases] = useState([]);
+  const [selectedCase, setSelectedCase] = useState(null);
   const [showAddCase, setShowAddCase] = useState(false);
+  const [showCaseDetail, setShowCaseDetail] = useState(false);
+  const [draggedCase, setDraggedCase] = useState(null);
   const [newCase, setNewCase] = useState({
     case_number: '',
     case_title: '',
@@ -408,8 +411,45 @@ const CaseManagement = ({ lawFirmId }) => {
     court_jurisdiction: '',
     client_name: '',
     assigned_attorney: '',
-    description: ''
+    description: '',
+    opposing_counsel: '',
+    judge_name: '',
+    priority: 'medium'
   });
+
+  // Define stage columns
+  const stageColumns = [
+    {
+      id: 'intake',
+      title: '📥 Intake',
+      subtitle: 'New cases & client onboarding',
+      color: 'bg-blue-50 border-blue-200'
+    },
+    {
+      id: 'ongoing',
+      title: '⚖️ Ongoing',
+      subtitle: 'Active cases & pre-trial',
+      color: 'bg-yellow-50 border-yellow-200'
+    },
+    {
+      id: 'hearing',
+      title: '🧑‍⚖️ Hearing',
+      subtitle: 'Court proceedings & dates',
+      color: 'bg-purple-50 border-purple-200'
+    },
+    {
+      id: 'judgment',
+      title: '📝 Judgment',
+      subtitle: 'Awaiting orders & decisions',
+      color: 'bg-orange-50 border-orange-200'
+    },
+    {
+      id: 'closed',
+      title: '✅ Closed',
+      subtitle: 'Completed cases',
+      color: 'bg-green-50 border-green-200'
+    }
+  ];
 
   useEffect(() => {
     fetchCases();
@@ -424,12 +464,119 @@ const CaseManagement = ({ lawFirmId }) => {
     }
   };
 
+  // Get cases by stage
+  const getCasesByStage = (stage) => {
+    return cases.filter(case_item => case_item.stage === stage);
+  };
+
+  // Color coding by case type
+  const getCaseTypeColor = (type) => {
+    const colors = {
+      'criminal': 'bg-red-100 text-red-800 border-red-200',
+      'civil': 'bg-blue-100 text-blue-800 border-blue-200',
+      'family': 'bg-pink-100 text-pink-800 border-pink-200',
+      'corporate': 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      'constitutional': 'bg-purple-100 text-purple-800 border-purple-200',
+      'labor': 'bg-green-100 text-green-800 border-green-200'
+    };
+    return colors[type] || 'bg-gray-100 text-gray-800 border-gray-200';
+  };
+
+  // Priority color coding
+  const getPriorityColor = (priority) => {
+    const colors = {
+      'urgent': 'text-red-600',
+      'high': 'text-orange-600',
+      'medium': 'text-yellow-600',
+      'low': 'text-green-600'
+    };
+    return colors[priority] || 'text-gray-600';
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e, caseItem) => {
+    setDraggedCase(caseItem);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = async (e, targetStage) => {
+    e.preventDefault();
+    if (draggedCase && draggedCase.stage !== targetStage) {
+      try {
+        await axios.put(`${API}/cases/${draggedCase.id}/stage`, {
+          stage: targetStage
+        });
+        fetchCases(); // Refresh to show updated positions
+      } catch (error) {
+        console.error('Error updating case stage:', error);
+      }
+    }
+    setDraggedCase(null);
+  };
+
+  // Case action handlers
+  const handleCaseClick = (caseItem) => {
+    setSelectedCase(caseItem);
+    setShowCaseDetail(true);
+  };
+
+  const handleAddNote = async (caseId, note) => {
+    try {
+      await axios.post(`${API}/cases/${caseId}/notes`, {
+        case_id: caseId,
+        content: note,
+        author: 'Current User', // In real app, get from auth context
+        note_type: 'general'
+      });
+      fetchCases();
+    } catch (error) {
+      console.error('Error adding note:', error);
+    }
+  };
+
+  const handleAddTask = async (caseId, task) => {
+    try {
+      await axios.post(`${API}/cases/${caseId}/tasks`, {
+        case_id: caseId,
+        title: task.title,
+        description: task.description,
+        assigned_to: task.assigned_to,
+        due_date: task.due_date,
+        priority: task.priority
+      });
+      fetchCases();
+    } catch (error) {
+      console.error('Error adding task:', error);
+    }
+  };
+
+  const handleSetReminder = async (caseId, reminder) => {
+    try {
+      await axios.post(`${API}/cases/${caseId}/alerts`, {
+        case_id: caseId,
+        type: 'reminder',
+        message: reminder.message,
+        due_date: reminder.due_date,
+        priority: reminder.priority
+      });
+      fetchCases();
+    } catch (error) {
+      console.error('Error setting reminder:', error);
+    }
+  };
+
   const handleAddCase = async (e) => {
     e.preventDefault();
     try {
       await axios.post(`${API}/cases`, {
         ...newCase,
-        law_firm_id: lawFirmId
+        law_firm_id: lawFirmId,
+        stage: 'intake'
       });
       
       setNewCase({
@@ -439,7 +586,10 @@ const CaseManagement = ({ lawFirmId }) => {
         court_jurisdiction: '',
         client_name: '',
         assigned_attorney: '',
-        description: ''
+        description: '',
+        opposing_counsel: '',
+        judge_name: '',
+        priority: 'medium'
       });
       setShowAddCase(false);
       fetchCases();
@@ -448,17 +598,175 @@ const CaseManagement = ({ lawFirmId }) => {
     }
   };
 
+  // Format dates
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Not set';
+    return new Date(dateString).toLocaleDateString('en-IN');
+  };
+
   return (
     <div className="px-4 py-6 sm:px-0">
       <div className="border-4 border-dashed border-gray-200 rounded-lg p-8">
+        {/* Header */}
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-900">📁 Case Management</h2>
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">📁 Case Management</h2>
+            <p className="text-gray-600 mt-2">Kanban-style workflow for legal case management</p>
+          </div>
           <button
             onClick={() => setShowAddCase(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
           >
             + Add New Case
           </button>
+        </div>
+
+        {/* Kanban Board */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-screen">
+          {stageColumns.map((column) => (
+            <div
+              key={column.id}
+              className={`${column.color} rounded-lg p-4 border-2 border-dashed`}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, column.id)}
+            >
+              {/* Column Header */}
+              <div className="mb-4">
+                <h3 className="font-semibold text-lg text-gray-800">{column.title}</h3>
+                <p className="text-sm text-gray-600">{column.subtitle}</p>
+                <div className="mt-2 text-sm font-medium text-gray-700">
+                  {getCasesByStage(column.id).length} cases
+                </div>
+              </div>
+
+              {/* Case Cards */}
+              <div className="space-y-4">
+                {getCasesByStage(column.id).map((caseItem) => (
+                  <div
+                    key={caseItem.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, caseItem)}
+                    onClick={() => handleCaseClick(caseItem)}
+                    className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer group"
+                  >
+                    {/* Case Header */}
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                          {caseItem.case_number}
+                        </span>
+                        <span className={`text-xs px-2 py-1 rounded-full border ${getCaseTypeColor(caseItem.case_type)}`}>
+                          {caseItem.case_type}
+                        </span>
+                      </div>
+                      <div className={`text-xs font-medium ${getPriorityColor(caseItem.priority)}`}>
+                        {caseItem.priority === 'urgent' && '🔴'}
+                        {caseItem.priority === 'high' && '🟠'}
+                        {caseItem.priority === 'medium' && '🟡'}
+                        {caseItem.priority === 'low' && '🟢'}
+                      </div>
+                    </div>
+
+                    {/* Case Title */}
+                    <h4 className="font-medium text-gray-900 mb-2 line-clamp-2">
+                      {caseItem.case_title}
+                    </h4>
+
+                    {/* Case Details */}
+                    <div className="space-y-2 text-sm text-gray-600">
+                      <div className="flex items-center">
+                        <span className="font-medium">👥 Client:</span>
+                        <span className="ml-2 truncate">{caseItem.client_name}</span>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <span className="font-medium">⚖️ Court:</span>
+                        <span className="ml-2 truncate">{caseItem.court_jurisdiction}</span>
+                      </div>
+
+                      {caseItem.next_hearing_date && (
+                        <div className="flex items-center">
+                          <span className="font-medium">⏰ Next Date:</span>
+                          <span className="ml-2">{formatDate(caseItem.next_hearing_date)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Badges and Counts */}
+                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                      <div className="flex items-center space-x-3">
+                        {caseItem.documents_count > 0 && (
+                          <span className="inline-flex items-center text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                            📎 {caseItem.documents_count}
+                          </span>
+                        )}
+                        {caseItem.research_count > 0 && (
+                          <span className="inline-flex items-center text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                            🧠 {caseItem.research_count}
+                          </span>
+                        )}
+                        {caseItem.active_alerts_count > 0 && (
+                          <span className="inline-flex items-center text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">
+                            ⚠️ {caseItem.active_alerts_count}
+                          </span>
+                        )}
+                        {caseItem.pending_tasks_count > 0 && (
+                          <span className="inline-flex items-center text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                            ✅ {caseItem.pending_tasks_count}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Quick Actions (Visible on Hover) */}
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center space-x-1">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const note = prompt('Add a quick note:');
+                              if (note) handleAddNote(caseItem.id, note);
+                            }}
+                            className="p-1 text-gray-400 hover:text-blue-600"
+                            title="Add Note"
+                          >
+                            📝
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // In real app, this would open a file picker
+                              alert('Document upload would open here');
+                            }}
+                            className="p-1 text-gray-400 hover:text-green-600"
+                            title="Upload Document"
+                          >
+                            📁
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const reminder = prompt('Set a reminder:');
+                              if (reminder) {
+                                handleSetReminder(caseItem.id, {
+                                  message: reminder,
+                                  due_date: new Date(Date.now() + 24*60*60*1000), // Tomorrow
+                                  priority: 'medium'
+                                });
+                              }
+                            }}
+                            className="p-1 text-gray-400 hover:text-yellow-600"
+                            title="Set Reminder"
+                          >
+                            🔔
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Add Case Modal */}
@@ -471,7 +779,7 @@ const CaseManagement = ({ lawFirmId }) => {
                   <div className="space-y-4">
                     <input
                       type="text"
-                      placeholder="Case Number"
+                      placeholder="Case Number (e.g., CR2025-041)"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       value={newCase.case_number}
                       onChange={(e) => setNewCase({...newCase, case_number: e.target.value})}
@@ -492,8 +800,9 @@ const CaseManagement = ({ lawFirmId }) => {
                     >
                       <option value="civil">Civil</option>
                       <option value="criminal">Criminal</option>
-                      <option value="corporate">Corporate</option>
                       <option value="family">Family</option>
+                      <option value="corporate">Corporate</option>
+                      <option value="constitutional">Constitutional</option>
                       <option value="labor">Labor</option>
                     </select>
                     <input
@@ -520,6 +829,30 @@ const CaseManagement = ({ lawFirmId }) => {
                       onChange={(e) => setNewCase({...newCase, assigned_attorney: e.target.value})}
                       required
                     />
+                    <input
+                      type="text"
+                      placeholder="Opposing Counsel (Optional)"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={newCase.opposing_counsel}
+                      onChange={(e) => setNewCase({...newCase, opposing_counsel: e.target.value})}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Judge Name (Optional)"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={newCase.judge_name}
+                      onChange={(e) => setNewCase({...newCase, judge_name: e.target.value})}
+                    />
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={newCase.priority}
+                      onChange={(e) => setNewCase({...newCase, priority: e.target.value})}
+                    >
+                      <option value="low">Low Priority</option>
+                      <option value="medium">Medium Priority</option>
+                      <option value="high">High Priority</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
                     <textarea
                       placeholder="Case Description"
                       rows={3}
@@ -550,48 +883,14 @@ const CaseManagement = ({ lawFirmId }) => {
           </div>
         )}
 
-        {/* Cases List */}
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="px-4 py-5 sm:p-6">
-            <div className="grid grid-cols-1 gap-6">
-              {cases.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No cases found. Add your first case to get started.</p>
-              ) : (
-                cases.map((case_item, index) => (
-                  <div key={index} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h4 className="text-lg font-medium text-gray-900">{case_item.case_title}</h4>
-                        <p className="text-sm text-gray-600 mt-1">
-                          <span className="font-medium">Case #:</span> {case_item.case_number} | 
-                          <span className="font-medium"> Type:</span> {case_item.case_type} | 
-                          <span className="font-medium"> Status:</span> {case_item.status}
-                        </p>
-                        <p className="text-sm text-gray-600 mt-1">
-                          <span className="font-medium">Client:</span> {case_item.client_name} | 
-                          <span className="font-medium"> Attorney:</span> {case_item.assigned_attorney}
-                        </p>
-                        <p className="text-sm text-gray-600 mt-1">
-                          <span className="font-medium">Court:</span> {case_item.court_jurisdiction}
-                        </p>
-                        <p className="text-sm text-gray-700 mt-2">{case_item.description}</p>
-                      </div>
-                      <div className="ml-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          case_item.status === 'active' ? 'bg-green-100 text-green-800' : 
-                          case_item.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {case_item.status}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Case Detail Modal/Sidebar */}
+        {showCaseDetail && selectedCase && (
+          <CaseDetailPanel 
+            case={selectedCase} 
+            onClose={() => setShowCaseDetail(false)}
+            onUpdate={fetchCases}
+          />
+        )}
       </div>
     </div>
   );
