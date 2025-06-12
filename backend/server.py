@@ -188,6 +188,53 @@ class CaseCreate(BaseModel):
     assigned_attorney: str
     client_name: str
     description: str
+    opposing_counsel: Optional[str] = None
+    judge_name: Optional[str] = None
+    next_hearing_date: Optional[datetime] = None
+    filing_deadline: Optional[datetime] = None
+    priority: str = "medium"
+
+class CaseUpdate(BaseModel):
+    case_title: Optional[str] = None
+    stage: Optional[str] = None
+    sub_stage: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    next_hearing_date: Optional[datetime] = None
+    filing_deadline: Optional[datetime] = None
+    case_summary: Optional[str] = None
+    legal_issues: Optional[List[str]] = None
+    opposing_counsel: Optional[str] = None
+    judge_name: Optional[str] = None
+    description: Optional[str] = None
+
+class TaskCreate(BaseModel):
+    case_id: str
+    title: str
+    description: str
+    assigned_to: str
+    due_date: Optional[datetime] = None
+    priority: str = "medium"
+
+class NoteCreate(BaseModel):
+    case_id: str
+    content: str
+    author: str
+    note_type: str = "general"
+
+class AlertCreate(BaseModel):
+    case_id: str
+    type: str
+    message: str
+    due_date: datetime
+    priority: str = "medium"
+
+class TimeEntryCreate(BaseModel):
+    case_id: str
+    attorney: str
+    description: str
+    hours: float
+    billable: bool = True
 
 # AI Legal Assistant with OpenRouter
 async def get_ai_legal_response(query: str, context: str = "", session_id: str = None) -> str:
